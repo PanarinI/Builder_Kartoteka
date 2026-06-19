@@ -776,13 +776,18 @@ const STORAGE_KEY = 'kartoteka_cards';
 
 async function loadCards() {
   try {
-    const r = await window.storage.get(STORAGE_KEY);
-    return r ? JSON.parse(r.value) : [];
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
 async function saveCards(cards) {
-  await window.storage.set(STORAGE_KEY, JSON.stringify(cards));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+  } catch(e) {
+    showToast('Ошибка сохранения', 'error');
+    console.error(e);
+  }
 }
 
 // ─── STATE ─────────────────────────────────────────────────
