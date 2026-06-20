@@ -636,9 +636,67 @@
     }
 
     .stats-bar span { color: var(--text-mid); }
+
+    /* LOGIN SCREEN */
+    .login-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+      gap: 24px;
+    }
+
+    .login-screen.hidden { display: none; }
+
+    .login-logo {
+      font-family: var(--mono);
+      font-size: 24px;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+    }
+
+    .login-subtitle {
+      font-size: 14px;
+      color: var(--text-dim);
+      text-align: center;
+      max-width: 300px;
+      line-height: 1.6;
+    }
+
+    .login-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .login-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
   </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-logo">картотека/</div>
+  <div class="login-subtitle">Личная база знаний билдера.<br>Войди через Google чтобы начать.</div>
+  <button class="login-btn" onclick="handleDriveAuth()">
+    <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 6.293C4.672 4.166 6.656 3.58 9 3.58z"/></svg>
+    Войти через Google
+  </button>
+</div>
 
 <nav>
   <div class="nav-logo">картотека/</div>
@@ -975,40 +1033,53 @@ function initGoogleAuth() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
+    prompt: '',
     callback: async (response) => {
       if (response.error) {
         showToast('Ошибка авторизации Google', 'error');
         return;
       }
       accessToken = response.access_token;
-      localStorage.setItem('kartoteka_access_token', accessToken);
+      localStorage.setItem('kartoteka_google_authed', '1');
       updateDriveBtn(true);
-      showToast('Drive подключён', 'success');
 
-      // Load from Drive and merge with local
+      // Hide login screen
+      document.getElementById('loginScreen').classList.add('hidden');
+
+      // Load from Drive
       try {
         const driveCards = await driveLoad();
         if (driveCards && driveCards.length > 0) {
           cards = driveCards;
-          await saveCards(cards);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
           updateStats();
           renderTagFilters();
           showToast('Данные загружены из Drive', 'success');
         } else if (cards.length > 0) {
-          // Push local to Drive
           await driveSave(cards);
-          showToast('Локальные данные сохранены в Drive', 'success');
+          showToast('Данные сохранены в Drive', 'success');
+        } else {
+          showToast('Drive подключён', 'success');
         }
       } catch(e) {
         console.error('Drive sync error', e);
+        showToast('Drive подключён (ошибка синхронизации)', 'error');
       }
     }
   });
+
+  // Auto-reconnect if user was previously authed
+  const wasAuthed = localStorage.getItem('kartoteka_google_authed');
+  if (wasAuthed) {
+    // Try silent token refresh
+    tokenClient.requestAccessToken({ prompt: '' });
+  }
+  // If not authed — login screen stays visible
 }
 
 function handleDriveAuth() {
-  if (accessToken) return; // already connected, do nothing
-  if (tokenClient) tokenClient.requestAccessToken();
+  if (accessToken) return;
+  if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
   else showToast('Google Auth не загружен, попробуй позже', 'error');
 }
 
@@ -1061,12 +1132,20 @@ function updateApiKeyStatus() {
 
 // ─── INIT ──────────────────────────────────────────────────
 (async () => {
-  cards = await loadCards();
+  // Load local cards immediately (shown after auth)
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    cards = raw ? JSON.parse(raw) : [];
+  } catch { cards = []; }
+
   updateStats();
   renderTagFilters();
+
   const saved = getApiKey();
   if (saved) document.getElementById('apikeyInput').value = saved;
   updateApiKeyStatus();
+
+  // Init Google Auth (will auto-reconnect or show login screen)
   initGoogleAuth();
 })();
 
