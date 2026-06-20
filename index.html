@@ -757,16 +757,56 @@
 <!-- MODAL -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
   <div class="modal" id="modal">
-    <div class="modal-title" id="modalTitle"></div>
-    <div class="modal-body" id="modalBody"></div>
-    <div class="modal-nuance" id="modalNuance" style="display:none"></div>
-    <img class="modal-image" id="modalImage" style="display:none" />
-    <div class="modal-tags" id="modalTags"></div>
-    <div class="modal-meta" id="modalMeta"></div>
-    <div class="modal-actions">
-      <button class="btn-danger" onclick="deleteCard()">Удалить</button>
-      <button class="btn-secondary" onclick="closeModal()">Закрыть</button>
+
+    <!-- VIEW MODE -->
+    <div id="modalView">
+      <div class="modal-title" id="modalTitle"></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-nuance" id="modalNuance" style="display:none"></div>
+      <img class="modal-image" id="modalImage" style="display:none" />
+      <div class="modal-tags" id="modalTags"></div>
+      <div class="modal-meta" id="modalMeta"></div>
+      <div class="modal-actions">
+        <button class="btn-danger" onclick="deleteCard()">Удалить</button>
+        <button class="btn-secondary" onclick="startEdit()">Редактировать</button>
+        <button class="btn-secondary" onclick="closeModal()">Закрыть</button>
+      </div>
     </div>
+
+    <!-- EDIT MODE -->
+    <div id="modalEdit" style="display:none">
+      <div class="field-group">
+        <div class="field-label">Название</div>
+        <input class="field-input" id="editTitle" type="text" />
+      </div>
+      <div class="field-group">
+        <div class="field-label">Суть</div>
+        <textarea class="field-input" id="editBody" rows="4"></textarea>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Нюанс</div>
+        <textarea class="field-input" id="editNuance" rows="2"></textarea>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Теги (через запятую)</div>
+        <input class="field-input" id="editTags" type="text" />
+      </div>
+      <div class="field-group">
+        <div class="field-label">Источник</div>
+        <select class="field-input" id="editSource">
+          <option value="курс">курс</option>
+          <option value="личный опыт">личный опыт</option>
+          <option value="гипотеза">гипотеза</option>
+          <option value="документация">документация</option>
+          <option value="коммьюнити">коммьюнити</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="cancelEdit()">Отмена</button>
+        <button class="btn-primary" onclick="saveEdit()">Сохранить</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1276,8 +1316,52 @@ function openCard(id) {
 function closeModal(e) {
   if (!e || e.target === document.getElementById('modalOverlay')) {
     document.getElementById('modalOverlay').classList.remove('visible');
+    document.getElementById('modalView').style.display = 'block';
+    document.getElementById('modalEdit').style.display = 'none';
     currentCardId = null;
   }
+}
+
+function startEdit() {
+  const c = cards.find(x => x.id === currentCardId);
+  if (!c) return;
+  document.getElementById('editTitle').value = c.title || '';
+  document.getElementById('editBody').value = c.body || '';
+  document.getElementById('editNuance').value = c.nuance || '';
+  document.getElementById('editTags').value = (c.tags || []).join(', ');
+  document.getElementById('editSource').value = c.source || 'курс';
+  document.getElementById('modalView').style.display = 'none';
+  document.getElementById('modalEdit').style.display = 'block';
+}
+
+function cancelEdit() {
+  document.getElementById('modalView').style.display = 'block';
+  document.getElementById('modalEdit').style.display = 'none';
+}
+
+async function saveEdit() {
+  const title = document.getElementById('editTitle').value.trim();
+  const body = document.getElementById('editBody').value.trim();
+  if (!title || !body) { showToast('Название и суть обязательны', 'error'); return; }
+
+  const idx = cards.findIndex(x => x.id === currentCardId);
+  if (idx === -1) return;
+
+  cards[idx] = {
+    ...cards[idx],
+    title,
+    body,
+    nuance: document.getElementById('editNuance').value.trim() || null,
+    tags: document.getElementById('editTags').value.split(',').map(t => t.trim()).filter(Boolean),
+    source: document.getElementById('editSource').value
+  };
+
+  await saveCards(cards);
+  updateStats();
+  renderTagFilters();
+  renderCards();
+  closeModal();
+  showToast('Карточка обновлена', 'success');
 }
 
 async function deleteCard() {
