@@ -645,7 +645,16 @@
   <button class="nav-btn active" onclick="showScreen('capture', this)">+ Добавить</button>
   <button class="nav-btn" onclick="showScreen('kartoteka', this)">Картотека</button>
   <button class="nav-btn" onclick="showScreen('synthesis', this)">Синтез</button>
-  <button class="nav-btn" id="driveBtn" onclick="handleDriveAuth()" style="margin-left:8px; border: 1px solid var(--border)">☁ Drive</button>
+  <button id="driveIndicator" onclick="handleDriveAuth()" title="Google Drive" style="
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    margin-left: 8px;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+    padding: 4px;
+  ">☁</button>
 </nav>
 
 <div class="apikey-bar">
@@ -998,29 +1007,25 @@ function initGoogleAuth() {
 }
 
 function handleDriveAuth() {
-  if (accessToken) {
-    // Already connected - disconnect
-    accessToken = null;
-    driveFileId = null;
-    localStorage.removeItem('kartoteka_access_token');
-    updateDriveBtn(false);
-    showToast('Drive отключён', '');
-  } else {
-    if (tokenClient) tokenClient.requestAccessToken();
-    else showToast('Google Auth не загружен, попробуй позже', 'error');
-  }
+  if (accessToken) return; // already connected, do nothing
+  if (tokenClient) tokenClient.requestAccessToken();
+  else showToast('Google Auth не загружен, попробуй позже', 'error');
 }
 
 function updateDriveBtn(connected) {
-  const btn = document.getElementById('driveBtn');
+  const el = document.getElementById('driveIndicator');
   if (connected) {
-    btn.textContent = '☁ Drive ✓';
-    btn.style.color = 'var(--green)';
-    btn.style.borderColor = 'var(--green)';
+    el.textContent = '☁';
+    el.style.opacity = '1';
+    el.style.color = 'var(--green)';
+    el.title = 'Drive подключён';
+    el.style.cursor = 'default';
   } else {
-    btn.textContent = '☁ Drive';
-    btn.style.color = '';
-    btn.style.borderColor = 'var(--border)';
+    el.textContent = '☁';
+    el.style.opacity = '0.4';
+    el.style.color = '';
+    el.title = 'Подключить Google Drive';
+    el.style.cursor = 'pointer';
   }
 }
 
