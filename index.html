@@ -1041,63 +1041,6 @@ async function driveSave(cardsData) {
   } catch(e) { console.warn('Backup save failed', e); }
 }
 
-  // PRIMARY: visible kartoteka_cards.json in Drive root
-  if (driveFileId) {
-    await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,
-      { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: content }
-    );
-  } else {
-    const meta = { name: FILENAME, parents: ['root'] };
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
-    form.append('file', new Blob([content], { type: 'application/json' }));
-    const res = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-      { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
-    );
-    const data = await res.json();
-    driveFileId = data.id;
-    localStorage.setItem(DRIVE_FILE_ID_KEY, driveFileId);
-  }
-
-  // BACKUP: hidden copy in appDataFolder
-  try {
-    if (driveBackupId) {
-      await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${driveBackupId}?uploadType=media`,
-        { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: content }
-      );
-    } else {
-      const searchRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${BACKUP_FILENAME}'&fields=files(id)`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      const searchData = await searchRes.json();
-      if (searchData.files && searchData.files.length > 0) {
-        driveBackupId = searchData.files[0].id;
-        localStorage.setItem(DRIVE_BACKUP_ID_KEY, driveBackupId);
-        await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${driveBackupId}?uploadType=media`,
-          { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: content }
-        );
-      } else {
-        const meta = { name: BACKUP_FILENAME, parents: ['appDataFolder'] };
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
-        form.append('file', new Blob([content], { type: 'application/json' }));
-        const res = await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-          { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
-        );
-        const data = await res.json();
-        driveBackupId = data.id;
-        localStorage.setItem(DRIVE_BACKUP_ID_KEY, driveBackupId);
-      }
-    }
-  } catch(e) { console.warn('Backup save failed', e); }
-}
-
 // ─── GOOGLE AUTH ───────────────────────────────────────────
 function initGoogleAuth() {
   if (typeof google === 'undefined') { setTimeout(initGoogleAuth, 500); return; }
