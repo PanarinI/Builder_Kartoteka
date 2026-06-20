@@ -1320,6 +1320,58 @@ async function processInsight() {
   document.getElementById('processBtn').disabled = false;
 }
 
+// ─── IMAGE UPLOAD TO DRIVE ─────────────────────────────────
+async function uploadImageToDrive(base64Data, fileName) {
+  const folderId = await getOrCreateFolder();
+
+  // Create images subfolder if needed
+  let imagesFolderId = localStorage.getItem('kartoteka_images_folder_id');
+  if (!imagesFolderId) {
+    const searchRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='images' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id)`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const searchData = await searchRes.json();
+    if (searchData.files && searchData.files.length > 0) {
+      imagesFolderId = searchData.files[0].id;
+    } else {
+      const res = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'images', mimeType: 'application/vnd.google-apps.folder', parents: [folderId] })
+      });
+      const data = await res.json();
+      imagesFolderId = data.id;
+    }
+    localStorage.setItem('kartoteka_images_folder_id', imagesFolderId);
+  }
+
+  // Convert base64 to blob
+  const parts = base64Data.split(',');
+  const mimeType = parts[0].match(/:(.*?);/)[1];
+  const binary = atob(parts[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mimeType });
+
+  // Upload file
+  const meta = { name: fileName, parents: [imagesFolderId] };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+  form.append('file', blob);
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
+  );
+  const data = await res.json();
+  return data.id;
+}
+
+function getDriveImageUrl(fileId) {
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
+}
+
 // ─── SAVE ──────────────────────────────────────────────────
 async function saveCard() {
   const title = document.getElementById('previewTitle').value.trim();
@@ -1332,6 +1384,17 @@ async function saveCard() {
   const source = document.getElementById('sourceSelect').value;
   const today = new Date().toISOString().slice(0, 10);
 
+  let imageId = null;
+  if (pendingImageBase64 && accessToken) {
+    try {
+      showToast('Загружаю скрин в Drive...', '');
+      imageId = await uploadImageToDrive(pendingImageBase64, pendingImageName || `image_${Date.now()}.jpg`);
+    } catch(e) {
+      console.error('Image upload failed', e);
+      showToast('Скрин не загрузился в Drive', 'error');
+    }
+  }
+
   const card = {
     id: Date.now(),
     date: today,
@@ -1340,7 +1403,7 @@ async function saveCard() {
     title,
     body,
     nuance,
-    image: pendingImageBase64 || null,
+    imageId: imageId || null,
     imageName: pendingImageName || null
   };
 
@@ -1425,8 +1488,16 @@ function openCard(id) {
   else { nuanceEl.style.display = 'none'; }
 
   const imgEl = document.getElementById('modalImage');
-  if (c.image) { imgEl.src = c.image; imgEl.style.display = 'block'; }
-  else { imgEl.style.display = 'none'; }
+  if (c.imageId) {
+    imgEl.src = getDriveImageUrl(c.imageId);
+    imgEl.style.display = 'block';
+  } else if (c.image) {
+    // Legacy: base64 images
+    imgEl.src = c.image;
+    imgEl.style.display = 'block';
+  } else {
+    imgEl.style.display = 'none';
+  }
 
   document.getElementById('modalTags').innerHTML = c.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('');
   document.getElementById('modalMeta').innerHTML = `<span>${c.date}</span><span>${c.source}</span>`;
