@@ -1263,7 +1263,7 @@ async function processInsight() {
 
   const userContent = pendingImageBase64
     ? [
-        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: pendingImageBase64.split(',')[1] } },
+        { type: "image", source: { type: "base64", media_type: pendingImageBase64.split(';')[0].split(':')[1] || "image/jpeg", data: pendingImageBase64.split(',')[1] } },
         { type: "text", text: `Источник: ${source}\nДата: ${today}\n\nИнсайт:\n${text}` }
       ]
     : `Источник: ${source}\nДата: ${today}\n\nИнсайт:\n${text}`;
