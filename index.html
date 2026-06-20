@@ -1484,6 +1484,8 @@ async function saveEdit() {
   updateStats();
   renderTagFilters();
   renderCards();
+  document.getElementById('modalEdit').style.display = 'none';
+  document.getElementById('modalView').style.display = 'block';
   closeModal();
   showToast('Карточка обновлена', 'success');
 }
