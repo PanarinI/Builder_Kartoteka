@@ -1151,8 +1151,19 @@ function initGoogleAuth() {
 
 function handleDriveAuth() {
   if (accessToken) return;
-  if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
-  else showToast('Google Auth не загружен, попробуй позже', 'error');
+  if (tokenClient) {
+    tokenClient.requestAccessToken({ prompt: 'select_account' });
+  } else {
+    // Google not loaded yet — wait and retry
+    showToast('Загружаем Google...', '');
+    const wait = setInterval(() => {
+      if (tokenClient) {
+        clearInterval(wait);
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
+      }
+    }, 300);
+    setTimeout(() => clearInterval(wait), 10000);
+  }
 }
 
 function updateDriveBtn(connected) {
