@@ -6,6 +6,8 @@
   <title>Картотека</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js" async defer></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -643,6 +645,7 @@
   <button class="nav-btn active" onclick="showScreen('capture', this)">+ Добавить</button>
   <button class="nav-btn" onclick="showScreen('kartoteka', this)">Картотека</button>
   <button class="nav-btn" onclick="showScreen('synthesis', this)">Синтез</button>
+  <button class="nav-btn" id="driveBtn" onclick="handleDriveAuth()" style="margin-left:8px; border: 1px solid var(--border)">☁ Drive</button>
 </nav>
 
 <div class="apikey-bar">
@@ -771,22 +774,213 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ─── STORAGE ───────────────────────────────────────────────
+// ─── GOOGLE DRIVE CONFIG ───────────────────────────────────
+const CLIENT_ID = '96584222113-uuujkun1djko7an60p242mjvabc43m5m.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
+const FILENAME = 'kartoteka_cards.json';
 const STORAGE_KEY = 'kartoteka_cards';
 
+let driveFileId = null;
+let accessToken = null;
+let tokenClient = null;
+
+// ─── STORAGE ───────────────────────────────────────────────
 async function loadCards() {
+  // Try Drive first
+  if (accessToken) {
+    try {
+      const data = await driveLoad();
+      if (data) return data;
+    } catch(e) { console.warn('Drive load failed, using localStorage', e); }
+  }
+  // Fallback to localStorage
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
-async function saveCards(cards) {
+async function saveCards(cardsData) {
+  // Always save to localStorage
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cardsData));
+  } catch(e) { console.error('localStorage save failed', e); }
+
+  // Also save to Drive if connected
+  if (accessToken) {
+    try {
+      await driveSave(cardsData);
+    } catch(e) {
+      console.warn('Drive save failed', e);
+      showToast('Drive: ошибка синхронизации', 'error');
+    }
+  }
+}
+
+// ─── GOOGLE DRIVE API ──────────────────────────────────────
+async function driveLoad() {
+  // Find file
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${FILENAME}'&fields=files(id,name)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const searchData = await searchRes.json();
+
+  if (!searchData.files || searchData.files.length === 0) return null;
+
+  driveFileId = searchData.files[0].id;
+
+  const fileRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  return await fileRes.json();
+}
+
+async function driveSave(cardsData) {
+  const content = JSON.stringify(cardsData);
+  const blob = new Blob([content], { type: 'application/json' });
+
+  // Save to appDataFolder (hidden)
+  if (driveFileId) {
+    await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: content
+      }
+    );
+  } else {
+    const meta = { name: FILENAME, parents: ['appDataFolder'] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+    form.append('file', blob);
+
+    const res = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form
+      }
+    );
+    const data = await res.json();
+    driveFileId = data.id;
+  }
+
+  // Also save visible backup to Drive root
+  try {
+    const backupName = 'kartoteka_backup.json';
+
+    // Find existing backup file
+    const searchRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${backupName}' and 'root' in parents and trashed=false&fields=files(id)`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const searchData = await searchRes.json();
+
+    if (searchData.files && searchData.files.length > 0) {
+      // Update existing
+      await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${searchData.files[0].id}?uploadType=media`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: content
+        }
+      );
+    } else {
+      // Create new in root
+      const meta = { name: backupName, parents: ['root'] };
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+      form.append('file', blob);
+
+      await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: form
+        }
+      );
+    }
   } catch(e) {
-    showToast('Ошибка сохранения', 'error');
-    console.error(e);
+    console.warn('Backup to root failed', e);
+  }
+}
+
+// ─── GOOGLE AUTH ───────────────────────────────────────────
+function initGoogleAuth() {
+  if (typeof google === 'undefined') {
+    setTimeout(initGoogleAuth, 500);
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (response) => {
+      if (response.error) {
+        showToast('Ошибка авторизации Google', 'error');
+        return;
+      }
+      accessToken = response.access_token;
+      localStorage.setItem('kartoteka_access_token', accessToken);
+      updateDriveBtn(true);
+      showToast('Drive подключён', 'success');
+
+      // Load from Drive and merge with local
+      try {
+        const driveCards = await driveLoad();
+        if (driveCards && driveCards.length > 0) {
+          cards = driveCards;
+          await saveCards(cards);
+          updateStats();
+          renderTagFilters();
+          showToast('Данные загружены из Drive', 'success');
+        } else if (cards.length > 0) {
+          // Push local to Drive
+          await driveSave(cards);
+          showToast('Локальные данные сохранены в Drive', 'success');
+        }
+      } catch(e) {
+        console.error('Drive sync error', e);
+      }
+    }
+  });
+}
+
+function handleDriveAuth() {
+  if (accessToken) {
+    // Already connected - disconnect
+    accessToken = null;
+    driveFileId = null;
+    localStorage.removeItem('kartoteka_access_token');
+    updateDriveBtn(false);
+    showToast('Drive отключён', '');
+  } else {
+    if (tokenClient) tokenClient.requestAccessToken();
+    else showToast('Google Auth не загружен, попробуй позже', 'error');
+  }
+}
+
+function updateDriveBtn(connected) {
+  const btn = document.getElementById('driveBtn');
+  if (connected) {
+    btn.textContent = '☁ Drive ✓';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+  } else {
+    btn.textContent = '☁ Drive';
+    btn.style.color = '';
+    btn.style.borderColor = 'var(--border)';
   }
 }
 
@@ -825,10 +1019,10 @@ function updateApiKeyStatus() {
   cards = await loadCards();
   updateStats();
   renderTagFilters();
-  // restore API key
   const saved = getApiKey();
   if (saved) document.getElementById('apikeyInput').value = saved;
   updateApiKeyStatus();
+  initGoogleAuth();
 })();
 
 // ─── NAV ───────────────────────────────────────────────────
