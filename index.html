@@ -1578,6 +1578,18 @@ async function saveEdit() {
 
 async function deleteCard() {
   if (!currentCardId) return;
+  const card = cards.find(c => c.id === currentCardId);
+
+  // Delete image from Drive if exists
+  if (card && card.imageId && accessToken) {
+    try {
+      await fetch(`https://www.googleapis.com/drive/v3/files/${card.imageId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+    } catch(e) { console.warn('Image delete failed', e); }
+  }
+
   cards = cards.filter(c => c.id !== currentCardId);
   await saveCards(cards);
   updateStats();
