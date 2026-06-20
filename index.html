@@ -1436,6 +1436,9 @@ function openCard(id) {
 
 function closeModal(e) {
   if (!e || e.target === document.getElementById('modalOverlay')) {
+    // Don't close if in edit mode or selecting text
+    if (document.getElementById('modalEdit').style.display !== 'none') return;
+    if (window.getSelection && window.getSelection().toString().length > 0) return;
     document.getElementById('modalOverlay').classList.remove('visible');
     document.getElementById('modalView').style.display = 'block';
     document.getElementById('modalEdit').style.display = 'none';
