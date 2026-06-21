@@ -751,6 +751,10 @@
       <button class="btn-primary" id="processBtn" onclick="processInsight()">Оформить →</button>
     </div>
 
+    <div id="tagsDebug" style="display:none; margin-top:8px; font-size:11px; color:var(--text-dim); font-family:var(--mono); padding:8px 12px; background:var(--surface2); border-radius:6px; line-height:1.6;">
+      <span style="color:var(--accent)">теги в промпте:</span> <span id="tagsDebugList"></span>
+    </div>
+
     <div class="loading" id="loading">
       <div class="spinner"></div>
       <span>Claude оформляет карточку...</span>
@@ -1233,6 +1237,16 @@ async function processInsight() {
   const tagsHint = existingTags.length > 0
     ? `\nСУЩЕСТВУЮЩИЕ ТЕГИ В БАЗЕ (используй их приоритетно, новый тег только если не подходит ни один):\n${existingTags.join(', ')}`
     : '';
+
+  // Show debug
+  const debugEl = document.getElementById('tagsDebug');
+  const debugList = document.getElementById('tagsDebugList');
+  if (existingTags.length > 0) {
+    debugList.textContent = existingTags.join(', ');
+    debugEl.style.display = 'block';
+  } else {
+    debugEl.style.display = 'none';
+  }
 
   const systemPrompt = `Ты — ассистент инди-билдера, который разрабатывает и продвигает Chrome-расширения и веб-продукты.
 Твоя задача — принимать сырые инсайты, наблюдения и практики и превращать их в структурированные карточки знаний.
